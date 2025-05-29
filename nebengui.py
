@@ -1,0 +1,247 @@
+import sys
+import json
+import os
+import csv
+from PyQt5 import QtWidgets, QtCore
+from datetime import date, datetime
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+from reportlab.lib.pagesizes import A4
+from reportlab.lib import colors
+from reportlab.lib.styles import getSampleStyleSheet
+import matplotlib.pyplot as plt
+
+styles = getSampleStyleSheet()
+
+# Jahresabfrage
+app_init = QtWidgets.QApplication(sys.argv)
+year_input, ok = QtWidgets.QInputDialog.getText(None, "Abrechnungsjahr wählen", "Bitte Abrechnungsjahr eingeben (z. B. 2024):")
+if not ok or not year_input.isdigit():
+    sys.exit("❌ Kein gültiges Jahr eingegeben. Programm wird beendet.")
+
+ABRECHNUNGSJAHR = year_input.strip()
+ARCHIV_ORDNER = os.path.join("Archiv", f"Abrechnung_{ABRECHNUNGSJAHR}")
+VERWALTUNGSLISTE = os.path.join(ARCHIV_ORDNER, "Zaehleruebersicht.csv")
+class AbrechnungsApp(QtWidgets.QWidget):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle(f"Nebenkosten Profi GUI ({ABRECHNUNGSJAHR})")
+        self.resize(750, 500)
+
+        self.parteien = {}
+        self.fixe_kosten = {}
+        self.umlageschluessel = {}
+        self.verbrauchskosten = {}
+        self.zaehlerstaende = {}
+
+        layout = QtWidgets.QVBoxLayout()
+
+        self.info_label = QtWidgets.QLabel(f"Nebenkosten-Abrechnung {ABRECHNUNGSJAHR}")
+        layout.addWidget(self.info_label)
+
+        btn_parteien = QtWidgets.QPushButton("Parteien & Mieter eingeben (m², Abschläge)")
+        btn_parteien.clicked.connect(self.eingabe_parteien)
+        layout.addWidget(btn_parteien)
+
+        btn_kosten = QtWidgets.QPushButton("Kosten & Umlageschlüssel eingeben/editieren")
+        btn_kosten.clicked.connect(self.eingabe_kosten)
+        layout.addWidget(btn_kosten)
+
+        btn_rechnen = QtWidgets.QPushButton("Abrechnung erstellen (PDF, CSV, Verwaltungsliste)")
+        btn_rechnen.clicked.connect(self.erzeuge_abrechnung)
+        layout.addWidget(btn_rechnen)
+
+        btn_archiv = QtWidgets.QPushButton("Archiv öffnen")
+        btn_archiv.clicked.connect(self.archiv_oeffnen)
+        layout.addWidget(btn_archiv)
+
+        btn_vergleich = QtWidgets.QPushButton("Jahresvergleich anzeigen (Diagramm)")
+        btn_vergleich.clicked.connect(self.zeige_jahresvergleich)
+        layout.addWidget(btn_vergleich)
+
+        self.status = QtWidgets.QLabel("Status: Bereit")
+        layout.addWidget(self.status)
+
+        self.setLayout(layout)
+    def eingabe_parteien(self):
+        num, ok = QtWidgets.QInputDialog.getInt(self, "Parteien", "Wie viele Parteien?")
+        if not ok:
+            return
+        for i in range(num):
+            partei, _ = QtWidgets.QInputDialog.getText(self, "Partei", f"Name Partei {i+1} (z.B. EG):")
+            flaeche, _ = QtWidgets.QInputDialog.getDouble(self, "Fläche", f"Fläche von {partei} (m²):")
+            mieter_list = []
+            mietanzahl, _ = QtWidgets.QInputDialog.getInt(self, "Mieterabschnitte", f"Wieviele Mieterabschnitte für {partei}?")
+            for j in range(mietanzahl):
+                name, _ = QtWidgets.QInputDialog.getText(self, "Mietername", f"Mieter {j+1} Name:")
+                von, _ = QtWidgets.QInputDialog.getText(self, "Einzug", f"Einzugsdatum (YYYY-MM-DD):")
+                bis, _ = QtWidgets.QInputDialog.getText(self, "Auszug", f"Auszugsdatum (YYYY-MM-DD):")
+                abschlag, _ = QtWidgets.QInputDialog.getDouble(self, "Abschlag", f"Monatlicher Abschlag (€) für {name}:")
+                mieter_list.append({"name": name, "von": von, "bis": bis, "abschlag": abschlag})
+            self.parteien[partei] = {"fläche": flaeche, "mieter": mieter_list}
+        self.status.setText("✅ Parteien, m² und Mieter mit Abschlägen gespeichert.")
+    def eingabe_kosten(self):
+        num_fixe, _ = QtWidgets.QInputDialog.getInt(self, "Fixkosten", "Wie viele Fixkostenarten?")
+        for i in range(num_fixe):
+            kategorie, _ = QtWidgets.QInputDialog.getText(self, "Fixkosten", f"Fixkostenart {i+1}:")
+            betrag, _ = QtWidgets.QInputDialog.getDouble(self, "Betrag", f"Gesamtkosten für {kategorie} (€):")
+            schluessel, _ = QtWidgets.QInputDialog.getText(self, "Umlageschlüssel", f"Umlageschlüssel (fläche/parteien/faktor):")
+            factor = 1
+            if schluessel == "faktor":
+                factor, _ = QtWidgets.QInputDialog.getDouble(self, "Faktor", f"Faktor für {kategorie} (z.B. 0.5):")
+            self.fixe_kosten[kategorie] = betrag
+            self.umlageschluessel[kategorie] = {"art": schluessel, "factor": factor}
+
+        num_verbrauch, _ = QtWidgets.QInputDialog.getInt(self, "Verbrauchskosten", "Wie viele Verbrauchskostenarten?")
+        for i in range(num_verbrauch):
+            verbrauch, _ = QtWidgets.QInputDialog.getText(self, "Verbrauch", f"Verbrauchsart {i+1}:")
+            preis, _ = QtWidgets.QInputDialog.getDouble(self, "Preis", f"Preis pro Einheit (€):")
+            einheit, _ = QtWidgets.QInputDialog.getText(self, "Einheit", f"Einheit (z.B. m³, kWh):")
+            self.verbrauchskosten[verbrauch] = {"preis_pro_einheit": preis, "einheit": einheit}
+            for partei in self.parteien:
+                alt, _ = QtWidgets.QInputDialog.getDouble(self, "Altstand", f"{partei} - {verbrauch} Altstand:")
+                neu, _ = QtWidgets.QInputDialog.getDouble(self, "Neuwert", f"{partei} - {verbrauch} Neuwert:")
+                if partei not in self.zaehlerstaende:
+                    self.zaehlerstaende[partei] = {}
+                self.zaehlerstaende[partei][verbrauch] = [alt, neu]
+        self.status.setText("✅ Kosten, Umlageschlüssel & Zähler gespeichert.")
+    def erzeuge_abrechnung(self):
+        os.makedirs(ARCHIV_ORDNER, exist_ok=True)
+        gesamt_csv = [["Mieter", "Wohnung", "Gesamtbetrag (€)", "Gezahlt (€)", "Nachzahlung/Gutschrift (€)", "Neuer Abschlag (€)"]]
+        verwaltungs_csv = [["Jahr", "Partei", "Verbrauch", "Altstand", "Neuwert", "Menge", "Kosten (€)"]]
+        gesamt_flaeche = sum(p["fläche"] for p in self.parteien.values())
+        gesamt_parteien = len(self.parteien)
+        jahr_start = datetime.strptime(f"{ABRECHNUNGSJAHR}-01-01", "%Y-%m-%d")
+        jahr_ende = datetime.strptime(f"{ABRECHNUNGSJAHR}-12-31", "%Y-%m-%d")
+        gesamt_tage = (jahr_ende - jahr_start).days + 1
+
+        for partei, pdata in self.parteien.items():
+            for mieter in pdata["mieter"]:
+                name = mieter["name"]
+                abschlag = mieter["abschlag"]
+                von = datetime.strptime(mieter["von"], "%Y-%m-%d")
+                bis = datetime.strptime(mieter["bis"], "%Y-%m-%d")
+                anteil_tage = (bis - von).days + 1
+                zeitanteil = anteil_tage / gesamt_tage
+
+                gesamt = 0
+                gezahlt = abschlag * (anteil_tage / 30)
+                filename = os.path.join(ARCHIV_ORDNER, f"Abrechnung_{name}_{partei}.pdf")
+                doc = SimpleDocTemplate(filename, pagesize=A4)
+                elements = []
+
+                elements.append(Paragraph("<b>Nebenkostenabrechnung</b>", styles["Title"]))
+                elements.append(Paragraph(f"Abrechnungszeitraum: 01.01.{ABRECHNUNGSJAHR} bis 31.12.{ABRECHNUNGSJAHR}", styles["Normal"]))
+                elements.append(Paragraph(f"Erstellt am: {date.today().strftime('%d.%m.%Y')}", styles["Normal"]))
+                elements.append(Spacer(1, 12))
+
+                elements.append(Paragraph(f"Sehr geehrte/r {name},", styles["Normal"]))
+                elements.append(Paragraph(f"Wohnung: {partei} ({pdata['fläche']} m²)", styles["Normal"]))
+                elements.append(Spacer(1, 12))
+                verbrauch_data = [["Kostenart", "Alt", "Neu", "Menge", "Einheit", "Preis/Einheit", "Kosten"]]
+                for verbrauch, info in self.verbrauchskosten.items():
+                    alt, neu = self.zaehlerstaende[partei][verbrauch]
+                    menge = (neu - alt) * zeitanteil
+                    kosten = menge * info["preis_pro_einheit"]
+                    gesamt += kosten
+                    verbrauch_data.append([verbrauch, alt, neu, round(menge, 2), info["einheit"], f"{info['preis_pro_einheit']:.2f} €", f"{kosten:.2f} €"])
+                    verwaltungs_csv.append([ABRECHNUNGSJAHR, partei, verbrauch, alt, neu, round(menge, 2), f"{kosten:.2f}"])
+
+                t1 = Table(verbrauch_data, hAlign="LEFT")
+                t1.setStyle(TableStyle([
+                    ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+                    ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                    ('ALIGN', (1, 1), (-1, -1), 'CENTER'),
+                    ('GRID', (0, 0), (-1, -1), 0.5, colors.black),
+                    ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ]))
+                elements.append(Paragraph("<b>Zählerstände und Verbrauchskosten</b>", styles["Heading2"]))
+                elements.append(t1)
+                elements.append(Spacer(1, 12))
+
+                fixe_data = [["Kostenart", "Schlüssel", "Kosten"]]
+                for kategorie, betrag in self.fixe_kosten.items():
+                    schluessel = self.umlageschluessel[kategorie]["art"]
+                    factor = self.umlageschluessel[kategorie]["factor"]
+                    if schluessel == "fläche":
+                        anteil = pdata["fläche"] / gesamt_flaeche if gesamt_flaeche > 0 else 0
+                    elif schluessel == "parteien":
+                        anteil = 1 / gesamt_parteien if gesamt_parteien > 0 else 0
+                    elif schluessel == "faktor":
+                        anteil = factor
+                    else:
+                        anteil = 0
+                    kosten = betrag * anteil * zeitanteil
+                    gesamt += kosten
+                    fixe_data.append([kategorie, schluessel, f"{kosten:.2f} €"])
+                t2 = Table(fixe_data, hAlign="LEFT")
+                t2.setStyle(TableStyle([
+                    ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+                    ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                    ('ALIGN', (1, 1), (-1, -1), 'CENTER'),
+                    ('GRID', (0, 0), (-1, -1), 0.5, colors.black),
+                    ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ]))
+                elements.append(Paragraph("<b>Fixkosten</b>", styles["Heading2"]))
+                elements.append(t2)
+                elements.append(Spacer(1, 12))
+
+                differenz = gesamt - gezahlt
+                neuer_abschlag = (gesamt / 12) * 1.05
+
+                elements.append(Paragraph(f"<b>Gesamtbetrag: {gesamt:.2f} €</b>", styles["Heading2"]))
+                elements.append(Paragraph(f"Bisher gezahlt: {gezahlt:.2f} €", styles["Normal"]))
+                if differenz > 0:
+                    elements.append(Paragraph(f"Nachzahlung: {differenz:.2f} €", styles["Normal"]))
+                else:
+                    elements.append(Paragraph(f"Gutschrift: {-differenz:.2f} €", styles["Normal"]))
+                elements.append(Paragraph(f"Neuer monatlicher Abschlag: {neuer_abschlag:.2f} €", styles["Normal"]))
+                elements.append(Spacer(1, 12))
+
+                elements.append(Paragraph("Wir danken Ihnen für Ihre pünktliche Zahlung.", styles["Normal"]))
+                doc.build(elements)
+
+                gesamt_csv.append([name, partei, f"{gesamt:.2f}", f"{gezahlt:.2f}", f"{differenz:.2f}", f"{neuer_abschlag:.2f}"])
+        with open(os.path.join(ARCHIV_ORDNER, "Gesamtübersicht.csv"), 'w', newline='', encoding='utf-8') as f:
+            writer = csv.writer(f)
+            writer.writerows(gesamt_csv)
+        with open(VERWALTUNGSLISTE, 'w', newline='', encoding='utf-8') as f:
+            writer = csv.writer(f)
+            writer.writerows(verwaltungs_csv)
+        self.status.setText("✅ Abrechnung abgeschlossen! PDFs, CSVs und Verwaltungsliste im Archiv.")
+
+    def archiv_oeffnen(self):
+        if os.path.exists(ARCHIV_ORDNER):
+            os.system(f'xdg-open "{ARCHIV_ORDNER}"') if sys.platform != 'win32' else os.startfile(ARCHIV_ORDNER)
+            self.status.setText("✅ Archiv geöffnet.")
+        else:
+            self.status.setText("❌ Kein Archiv vorhanden.")
+
+    def zeige_jahresvergleich(self):
+        jahre = []
+        kosten = []
+        if not os.path.exists("Archiv"):
+            self.status.setText("❌ Kein Archiv vorhanden.")
+            return
+        for ordner in os.listdir("Archiv"):
+            jahr = ordner.replace("Abrechnung_", "")
+            pfad = os.path.join("Archiv", ordner, "Gesamtübersicht.csv")
+            if os.path.exists(pfad):
+                with open(pfad, 'r', encoding='utf-8') as f:
+                    reader = csv.reader(f)
+                    next(reader)  # Überschrift
+                    jahr_summe = sum(float(row[2].replace("€", "").strip()) for row in reader)
+                    jahre.append(jahr)
+                    kosten.append(jahr_summe)
+        if jahre:
+            plt.bar(jahre, kosten)
+            plt.xlabel("Jahr")
+            plt.ylabel("Gesamtkosten (€)")
+            plt.title("Jahresvergleich Nebenkosten")
+            plt.show()
+        else:
+            self.status.setText("❌ Keine Daten für Jahresvergleich gefunden.")
+
+app = QtWidgets.QApplication(sys.argv)
+window = AbrechnungsApp()
+window.show()
+sys.exit(app.exec_())
