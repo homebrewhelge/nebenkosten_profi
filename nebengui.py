@@ -9,7 +9,7 @@ from reportlab.pdfgen import canvas
 class TabellenGUI(QtWidgets.QWidget):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Nebenkosten Profi – Tabellenansicht (v1.1, erweitert)")
+        self.setWindowTitle("Nebenkosten Profi – Tabellenansicht (v1.1 komplett)")
         self.resize(1600, 950)
 
         tabs = QtWidgets.QTabWidget()
@@ -25,6 +25,10 @@ class TabellenGUI(QtWidgets.QWidget):
         layout_zaehler.addWidget(QtWidgets.QLabel(
             "Hier erfasst du die aktuellen Zählerstände und ggf. Einzugs-/Auszugsdaten."))
         layout_zaehler.addWidget(self.zaehler_table)
+        btn_add_zaehler = QtWidgets.QPushButton("Zeile hinzufügen")
+        btn_add_zaehler.clicked.connect(
+            lambda: self.zaehler_table.setRowCount(self.zaehler_table.rowCount() + 1))
+        layout_zaehler.addWidget(btn_add_zaehler)
         tab_zaehler.setLayout(layout_zaehler)
         tabs.addTab(tab_zaehler, "Zählerstände")
 
@@ -48,15 +52,18 @@ class TabellenGUI(QtWidgets.QWidget):
         layout_kosten.addWidget(QtWidgets.QLabel(
             "Hier legst du die fixen Kostenarten fest. 'Heizung' wird ggf. 70/30 aufgeteilt."))
         layout_kosten.addWidget(self.kosten_table)
+        btn_add_kosten = QtWidgets.QPushButton("Zeile hinzufügen")
+        btn_add_kosten.clicked.connect(
+            lambda: self.kosten_table.setRowCount(self.kosten_table.rowCount() + 1))
+        layout_kosten.addWidget(btn_add_kosten)
         tab_kosten.setLayout(layout_kosten)
         tabs.addTab(tab_kosten, "Fixkosten/Umlage")
 
-        # ── Neuer Tab: Heizkosten-Detail ─────────────────────────────────
+        # ── Tab 3: Heizkosten-Detail ───────────────────────────────────────
         self.heiz_table = QtWidgets.QTableWidget()
         self.heiz_table.setColumnCount(4)
         self.heiz_table.setHorizontalHeaderLabels([
-            "Partei", "Heizverbrauch (Einheiten)",
-            "Heizkosten 70 % (€)", "Heizgrundkosten 30 % (€)"
+            "Partei", "Heizverbrauch (Einheiten)", "Heizkosten 70 % (€)", "Heizgrundkosten 30 % (€)"
         ])
         self.heiz_table.setRowCount(0)
 
@@ -68,7 +75,7 @@ class TabellenGUI(QtWidgets.QWidget):
         tab_heizung.setLayout(layout_heizung)
         tabs.insertTab(2, tab_heizung, "Heizkosten")
 
-        # ── Tab 3: Ergebnisse ─────────────────────────────────────────────
+        # ── Tab 4: Ergebnisse ─────────────────────────────────────────────
         self.ergebnisse_table = QtWidgets.QTableWidget()
         self.ergebnisse_table.setColumnCount(6)
         self.ergebnisse_table.setRowCount(2)
@@ -81,10 +88,14 @@ class TabellenGUI(QtWidgets.QWidget):
         layout_ergebnisse.addWidget(QtWidgets.QLabel(
             "Hier siehst du die Endergebnisse pro Mieter."))
         layout_ergebnisse.addWidget(self.ergebnisse_table)
+        btn_add_ergebnisse = QtWidgets.QPushButton("Zeile hinzufügen")
+        btn_add_ergebnisse.clicked.connect(
+            lambda: self.ergebnisse_table.setRowCount(self.ergebnisse_table.rowCount() + 1))
+        layout_ergebnisse.addWidget(btn_add_ergebnisse)
         tab_ergebnisse.setLayout(layout_ergebnisse)
         tabs.addTab(tab_ergebnisse, "Ergebnisse")
 
-        # ── Tab 4: Zählerhistorie ────────────────────────────────────────
+        # ── Tab 5: Zählerhistorie ────────────────────────────────────────
         self.historie_table = QtWidgets.QTableWidget()
         self.historie_table.setColumnCount(6)
         self.historie_table.setRowCount(20)
@@ -97,21 +108,21 @@ class TabellenGUI(QtWidgets.QWidget):
             "Hier speicherst du alle historischen Zählerdaten."))
         layout_historie.addWidget(self.historie_table)
 
-        btn_add_row = QtWidgets.QPushButton("Zeile hinzufügen")
-        btn_add_row.clicked.connect(
+        btn_add_historie = QtWidgets.QPushButton("Zeile hinzufügen")
+        btn_add_historie.clicked.connect(
             lambda: self.historie_table.setRowCount(self.historie_table.rowCount() + 1))
         btn_copy_zaehler = QtWidgets.QPushButton("Zähler in Historie übernehmen")
         btn_copy_zaehler.clicked.connect(self.copy_zaehler_to_historie)
         btn_new_year = QtWidgets.QPushButton("Neues Jahr anlegen")
         btn_new_year.clicked.connect(self.prepare_new_year)
 
-        layout_historie.addWidget(btn_add_row)
+        layout_historie.addWidget(btn_add_historie)
         layout_historie.addWidget(btn_copy_zaehler)
         layout_historie.addWidget(btn_new_year)
         tab_historie.setLayout(layout_historie)
         tabs.addTab(tab_historie, "Zählerhistorie")
 
-        # ── Tab 5: Abrechnung ────────────────────────────────────────────
+        # ── Tab 6: Abrechnung ────────────────────────────────────────────
         self.abrechnung_area = QtWidgets.QTextEdit()
         tab_abrechnung = QtWidgets.QWidget()
         layout_abrechnung = QtWidgets.QVBoxLayout()
@@ -177,18 +188,18 @@ class TabellenGUI(QtWidgets.QWidget):
                 row_index = self.historie_table.rowCount()
                 self.historie_table.insertRow(row_index)
                 self.historie_table.setItem(row_index, 0,
-                    QtWidgets.QTableWidgetItem(str(year)))
+                                           QtWidgets.QTableWidgetItem(str(year)))
                 self.historie_table.setItem(row_index, 1,
-                    QtWidgets.QTableWidgetItem(partei_item.text()))
+                                           QtWidgets.QTableWidgetItem(partei_item.text()))
                 self.historie_table.setItem(row_index, 2,
-                    QtWidgets.QTableWidgetItem(art_item.text()))
+                                           QtWidgets.QTableWidgetItem(art_item.text()))
                 self.historie_table.setItem(row_index, 3,
-                    QtWidgets.QTableWidgetItem(f"{alt_wert:.2f}"))
+                                           QtWidgets.QTableWidgetItem(f"{alt_wert:.2f}"))
                 self.historie_table.setItem(row_index, 4,
-                    QtWidgets.QTableWidgetItem(f"{neu_wert:.2f}"))
+                                           QtWidgets.QTableWidgetItem(f"{neu_wert:.2f}"))
                 verbrauch = neu_wert - alt_wert
                 self.historie_table.setItem(row_index, 5,
-                    QtWidgets.QTableWidgetItem(f"{verbrauch:.2f}"))
+                                           QtWidgets.QTableWidgetItem(f"{verbrauch:.2f}"))
 
     def prepare_new_year(self):
         """Übernimmt bei Jahreswechsel den Neuwert als neuen Altstand und leert das Neuwert-Feld."""
@@ -197,11 +208,12 @@ class TabellenGUI(QtWidgets.QWidget):
             neu_item = self.zaehler_table.item(row, 3)
             if neu_item:
                 self.zaehler_table.setItem(row, 2,
-                    QtWidgets.QTableWidgetItem(neu_item.text()))
+                                           QtWidgets.QTableWidgetItem(neu_item.text()))
                 self.zaehler_table.setItem(row, 3,
-                    QtWidgets.QTableWidgetItem(""))
+                                           QtWidgets.QTableWidgetItem(""))
         QtWidgets.QMessageBox.information(
-            self, "Neues Jahr", f"Vorbereitung für {next_year} abgeschlossen.")
+            self, "Neues Jahr", f"Vorbereitung für {next_year} abgeschlossen."
+        )
 
     def speichere_historie(self):
         """Speichert die Historie in eine CSV-Datei pro Jahr und erstellt ein Backup."""
@@ -246,12 +258,13 @@ class TabellenGUI(QtWidgets.QWidget):
                     self.historie_table.insertRow(row_index)
                     for col, data in enumerate(row_data):
                         self.historie_table.setItem(row_index, col,
-                            QtWidgets.QTableWidgetItem(data))
+                                                   QtWidgets.QTableWidgetItem(data))
             QtWidgets.QMessageBox.information(
                 self, "Laden", f"Historie aus {filename} geladen")
         except FileNotFoundError:
             QtWidgets.QMessageBox.warning(
-                self, "Fehler", f"Datei {filename} nicht gefunden")
+                self, "Fehler", f"Datei {filename} nicht gefunden"
+            )
 
     def berechne(self):
         """Haupt-Berechnungslogik inklusive Heizkosten-Tab."""
@@ -282,6 +295,7 @@ class TabellenGUI(QtWidgets.QWidget):
                 continue
 
             menge = neu_wert - alt_wert
+            # Mieterwechsel-Logik
             if einzug_item and auszug_item:
                 einzug_text = einzug_item.text().strip()
                 auszug_text = auszug_item.text().strip()
@@ -324,15 +338,18 @@ class TabellenGUI(QtWidgets.QWidget):
             except ValueError:
                 continue
 
+            # CO₂-Aufschlag
             if self.check_co2_global.isChecked() and co2_widget and co2_widget.isChecked():
                 gesamt_kost *= 1.05
 
+            # Heizkosten 70/30
             if self.check_7030.isChecked() and "Heizung" in text_kostenart:
                 verbrauchsteil = gesamt_kost * 0.70
                 grundteil      = gesamt_kost * 0.30
                 heizkosten_gesamt     += verbrauchsteil
                 heizgrundkosten_gesamt += grundteil
 
+                # Faktor-Liste parsen (z.B. EG:100,OG:50)
                 if schl_text == "Faktor" and faktor_item:
                     faktor_text = faktor_item.text().strip()
                     for pair in faktor_text.split(","):
@@ -366,8 +383,8 @@ class TabellenGUI(QtWidgets.QWidget):
         if summe_heizfaktoren > 0:
             for partei_name, faktor in heiz_faktoren_pro_partei.items():
                 grund_heiz_verteilung[partei_name] = (
-                    faktor / summe_heizfaktoren
-                ) * heizgrundkosten_gesamt
+                    (faktor / summe_heizfaktoren) * heizgrundkosten_gesamt
+                )
         else:
             parteien_mit_heiz = list(verbrauch_heiz_verteilung.keys())
             if parteien_mit_heiz:
@@ -446,17 +463,16 @@ class TabellenGUI(QtWidgets.QWidget):
             except ValueError:
                 gesamt_kost = 0.0
 
+            # CO₂-Aufschlag
             if self.check_co2_global.isChecked() and co2_widget and co2_widget.isChecked():
                 gesamt_kost *= 1.05
 
+            # Skip Heizkosten hier, weil separat berechnet
             if self.check_7030.isChecked() and "Heizung" in text_kostenart:
                 continue
 
             if schl_text == "Manuell":
-                try:
-                    man_kost = float(self.kosten_table.item(row, 4).text())
-                except:
-                    man_kost = 0.0
+                # Nutzer füllt Verteilte Kosten (€) in Spalte 5 selbst aus
                 continue
 
             elif schl_text == "Faktor":
@@ -473,9 +489,7 @@ class TabellenGUI(QtWidgets.QWidget):
                             wert = float(wert_str.strip())
                         except ValueError:
                             wert = 0.0
-                        faktor_dict[partei_name] = (
-                            faktor_dict.get(partei_name, 0.0) + wert
-                        )
+                        faktor_dict[partei_name] = faktor_dict.get(partei_name, 0.0) + wert
                 summe_faktoren_fix = sum(faktor_dict.values())
                 if summe_faktoren_fix > 0:
                     for partei_name, wert in faktor_dict.items():
@@ -542,11 +556,11 @@ class TabellenGUI(QtWidgets.QWidget):
                         )
                 continue
 
-        # ── Tab 3: Ergebnisse mit Summen ─────────────────────────────────
+        # ── Tab 6: Ergebnisse mit Summen ─────────────────────────────────
         ergebnis_texte = []
         for row in range(self.ergebnisse_table.rowCount()):
-            name_item    = self.ergebnisse_table.item(row, 0)
-            partei_item  = self.ergebnisse_table.item(row, 1)
+            name_item    = self.ergebnisse_table.item(row, 0)  # Mieter
+            partei_item  = self.ergebnisse_table.item(row, 1)  # Partei
             gezahlt_item = self.ergebnisse_table.item(row, 3)
             if not (name_item and partei_item and gezahlt_item):
                 continue
@@ -569,22 +583,15 @@ class TabellenGUI(QtWidgets.QWidget):
             except:
                 neuer_abschlag = 0.0
 
-            if differenz > 0:
-                self.ergebnisse_table.setItem(row, 4,
-                    QtWidgets.QTableWidgetItem(f"{differenz:.2f}"))
-                self.ergebnisse_table.setItem(row, 5,
-                    QtWidgets.QTableWidgetItem("0.00"))
-            else:
-                self.ergebnisse_table.setItem(row, 4,
-                    QtWidgets.QTableWidgetItem("0.00"))
-                self.ergebnisse_table.setItem(row, 5,
-                    QtWidgets.QTableWidgetItem(f"{-differenz:.2f}"))
-
+            # Fülle Ergebnisse-Tabelle
             self.ergebnisse_table.setItem(row, 2,
                 QtWidgets.QTableWidgetItem(f"{gesamt_kosten_partei:.2f}"))
+            self.ergebnisse_table.setItem(row, 4,
+                QtWidgets.QTableWidgetItem(f"{differenz:.2f}"))
             self.ergebnisse_table.setItem(row, 5,
                 QtWidgets.QTableWidgetItem(f"{neuer_abschlag:.2f}"))
 
+            # Erzeuge Textbaustein
             if differenz > 0:
                 text = (
                     f"Sehr geehrte/r {name_text}, Ihre Nebenkostenabrechnung ergibt eine "
@@ -599,6 +606,7 @@ class TabellenGUI(QtWidgets.QWidget):
                 )
             ergebnis_texte.append(text)
 
+        # Schreibe Texte in Abrechnung-Tab
         self.abrechnung_area.setText("\n\n".join(ergebnis_texte))
 
     def export_abrechnung_pdf(self):
@@ -617,7 +625,8 @@ class TabellenGUI(QtWidgets.QWidget):
         c.drawText(textobject)
         c.save()
         QtWidgets.QMessageBox.information(
-            self, "PDF Export", f"Abrechnung als {filename} gespeichert")
+            self, "PDF Export", f"Abrechnung als {filename} gespeichert"
+        )
 
 if __name__ == "__main__":
     app = QtWidgets.QApplication(sys.argv)
