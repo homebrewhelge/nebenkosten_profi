@@ -5,16 +5,17 @@ from datetime import datetime, date
 from PyQt5 import QtWidgets, QtCore
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
+from reportlab.lib import colors
 
 class TabellenGUI(QtWidgets.QWidget):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Nebenkosten Profi – Tabellenansicht (v1.1 komplett)")
+        self.setWindowTitle("Nebenkosten Profi – Tabellenansicht (v1.4)")
         self.resize(1600, 950)
 
         tabs = QtWidgets.QTabWidget()
 
-        # ── Tab 1: Zählerstände ───────────────────────────────────────────
+        # ── Tab 1: Zählerstände ─────────────────────────────────────────
         self.zaehler_table = self.create_table(
             ["Partei", "Verbrauchsart", "Altstand", "Neuwert", "Menge",
              "Kosten/Einheit (€)", "Einzug (JJJJ-MM-TT)", "Auszug (JJJJ-MM-TT)"],
@@ -32,7 +33,7 @@ class TabellenGUI(QtWidgets.QWidget):
         tab_zaehler.setLayout(layout_zaehler)
         tabs.addTab(tab_zaehler, "Zählerstände")
 
-        # ── Tab 2: Fixkosten/Umlage ───────────────────────────────────────
+        # ── Tab 2: Fixkosten/Umlage ────────────────────────────────────
         self.kosten_table = QtWidgets.QTableWidget()
         self.kosten_table.setColumnCount(6)
         self.kosten_table.setRowCount(10)
@@ -59,7 +60,7 @@ class TabellenGUI(QtWidgets.QWidget):
         tab_kosten.setLayout(layout_kosten)
         tabs.addTab(tab_kosten, "Fixkosten/Umlage")
 
-        # ── Tab 3: Heizkosten-Detail ───────────────────────────────────────
+        # ── Tab 3: Heizkosten-Detail ───────────────────────────────────
         self.heiz_table = QtWidgets.QTableWidget()
         self.heiz_table.setColumnCount(4)
         self.heiz_table.setHorizontalHeaderLabels([
@@ -75,7 +76,7 @@ class TabellenGUI(QtWidgets.QWidget):
         tab_heizung.setLayout(layout_heizung)
         tabs.insertTab(2, tab_heizung, "Heizkosten")
 
-        # ── Tab 4: Ergebnisse ─────────────────────────────────────────────
+        # ── Tab 4: Ergebnisse ───────────────────────────────────────────
         self.ergebnisse_table = QtWidgets.QTableWidget()
         self.ergebnisse_table.setColumnCount(6)
         self.ergebnisse_table.setRowCount(2)
@@ -95,7 +96,7 @@ class TabellenGUI(QtWidgets.QWidget):
         tab_ergebnisse.setLayout(layout_ergebnisse)
         tabs.addTab(tab_ergebnisse, "Ergebnisse")
 
-        # ── Tab 5: Zählerhistorie ────────────────────────────────────────
+        # ── Tab 5: Zählerhistorie ──────────────────────────────────────
         self.historie_table = QtWidgets.QTableWidget()
         self.historie_table.setColumnCount(6)
         self.historie_table.setRowCount(20)
@@ -123,19 +124,48 @@ class TabellenGUI(QtWidgets.QWidget):
         tabs.addTab(tab_historie, "Zählerhistorie")
 
         # ── Tab 6: Abrechnung ────────────────────────────────────────────
-        self.abrechnung_area = QtWidgets.QTextEdit()
         tab_abrechnung = QtWidgets.QWidget()
         layout_abrechnung = QtWidgets.QVBoxLayout()
+
+        # Checkboxen, um auszuwählen, welche Details angezeigt werden
+        cb_layout = QtWidgets.QHBoxLayout()
+        self.chk_show_heiz = QtWidgets.QCheckBox("Heizkosten")
+        self.chk_show_fix = QtWidgets.QCheckBox("Fixkosten")
+        self.chk_show_verbrauch = QtWidgets.QCheckBox("Verbrauchswerte")
+        self.chk_show_heiz.setChecked(True)
+        self.chk_show_fix.setChecked(True)
+        self.chk_show_verbrauch.setChecked(True)
+        cb_layout.addWidget(QtWidgets.QLabel("Details anzeigen:"))
+        cb_layout.addWidget(self.chk_show_heiz)
+        cb_layout.addWidget(self.chk_show_fix)
+        cb_layout.addWidget(self.chk_show_verbrauch)
+        cb_layout.addStretch()
+        layout_abrechnung.addLayout(cb_layout)
+
+        # Detail-Tabelle für Abrechnung
+        self.abrechnung_detail_table = QtWidgets.QTableWidget()
+        self.abrechnung_detail_table.setColumnCount(4)
+        self.abrechnung_detail_table.setHorizontalHeaderLabels(
+            ["Mieter", "Position", "Wert (€)", "Verbrauch"]
+        )
+        self.abrechnung_detail_table.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
+        layout_abrechnung.addWidget(self.abrechnung_detail_table)
+
+        # Textfeld für zusammenfassende Texte
+        self.abrechnung_area = QtWidgets.QTextEdit()
+        self.abrechnung_area.setReadOnly(True)
         layout_abrechnung.addWidget(QtWidgets.QLabel(
-            "Hier werden die fertigen Abrechnungstexte pro Mieter angezeigt."))
+            "Zusammenfassende Abrechnungstexte pro Mieter:"))
         layout_abrechnung.addWidget(self.abrechnung_area)
+
         btn_export_pdf = QtWidgets.QPushButton("Abrechnung als PDF speichern")
         btn_export_pdf.clicked.connect(self.export_abrechnung_pdf)
         layout_abrechnung.addWidget(btn_export_pdf)
+
         tab_abrechnung.setLayout(layout_abrechnung)
         tabs.addTab(tab_abrechnung, "Abrechnung")
 
-        # ───────────────────────────────────────────────────────────────────
+        # ─────────────────────────────────────────────────────────────────
         options_layout = QtWidgets.QHBoxLayout()
         self.check_7030 = QtWidgets.QCheckBox("Heizkosten: 70/30-Regel anwenden")
         self.check_co2_global = QtWidgets.QCheckBox("CO₂-Abgabe global einrechnen")
@@ -160,14 +190,135 @@ class TabellenGUI(QtWidgets.QWidget):
 
         self.setLayout(main_layout)
 
+        # ── Beim Start: CSVs laden (Zählerstände, Fixkosten, Ergebnisse)
+        self.lade_zaehlerstaende()
+        self.lade_fixkosten()
+        self.lade_ergebnisse()
+
     def create_table(self, headers, rows):
-        """Generiert eine editierbare QTableWidget mit den gegebenen Spaltenüberschriften."""
         table = QtWidgets.QTableWidget()
         table.setColumnCount(len(headers))
         table.setRowCount(rows)
         table.setHorizontalHeaderLabels(headers)
         table.setEditTriggers(QtWidgets.QAbstractItemView.AllEditTriggers)
         return table
+
+    # ─── Laden/Speichern Zählerstände ────────────────────────────────
+    def lade_zaehlerstaende(self):
+        filename = "zaehlerstaende.csv"
+        if not os.path.exists(filename):
+            return
+        with open(filename, 'r', encoding='utf-8') as f:
+            reader = csv.reader(f)
+            next(reader, None)
+            self.zaehler_table.setRowCount(0)
+            for row_data in reader:
+                row_index = self.zaehler_table.rowCount()
+                self.zaehler_table.insertRow(row_index)
+                for col, data in enumerate(row_data):
+                    if col < self.zaehler_table.columnCount():
+                        self.zaehler_table.setItem(row_index, col,
+                                                   QtWidgets.QTableWidgetItem(data))
+
+    def speichere_zaehlerstaende(self):
+        filename = "zaehlerstaende.csv"
+        with open(filename, 'w', newline='', encoding='utf-8') as f:
+            writer = csv.writer(f)
+            headers = [
+                self.zaehler_table.horizontalHeaderItem(i).text()
+                for i in range(self.zaehler_table.columnCount())
+            ]
+            writer.writerow(headers)
+            for row in range(self.zaehler_table.rowCount()):
+                row_data = []
+                for col in range(self.zaehler_table.columnCount()):
+                    item = self.zaehler_table.item(row, col)
+                    row_data.append(item.text() if item else "")
+                writer.writerow(row_data)
+
+    # ─── Laden/Speichern Fixkosten ──────────────────────────────────
+    def lade_fixkosten(self):
+        filename = "fixkosten.csv"
+        if not os.path.exists(filename):
+            return
+        with open(filename, 'r', encoding='utf-8') as f:
+            reader = csv.reader(f)
+            next(reader, None)
+            self.kosten_table.setRowCount(0)
+            for row_data in reader:
+                row_index = self.kosten_table.rowCount()
+                self.kosten_table.insertRow(row_index)
+                for col, data in enumerate(row_data):
+                    if col == 1:
+                        combo = QtWidgets.QComboBox()
+                        combo.addItems(["", "Fläche", "Parteien", "Verbrauch", "Faktor", "Manuell"])
+                        combo.setCurrentText(data)
+                        self.kosten_table.setCellWidget(row_index, 1, combo)
+                    elif col == 5:
+                        checkbox = QtWidgets.QCheckBox()
+                        checkbox.setChecked(data.lower() in ("1", "true", "ja", "yes"))
+                        self.kosten_table.setCellWidget(row_index, 5, checkbox)
+                    else:
+                        self.kosten_table.setItem(row_index, col,
+                                                  QtWidgets.QTableWidgetItem(data))
+
+    def speichere_fixkosten(self):
+        filename = "fixkosten.csv"
+        with open(filename, 'w', newline='', encoding='utf-8') as f:
+            writer = csv.writer(f)
+            headers = [
+                self.kosten_table.horizontalHeaderItem(i).text()
+                for i in range(self.kosten_table.columnCount())
+            ]
+            writer.writerow(headers)
+            for row in range(self.kosten_table.rowCount()):
+                row_data = []
+                for col in range(self.kosten_table.columnCount()):
+                    if col == 1:
+                        widget = self.kosten_table.cellWidget(row, col)
+                        row_data.append(widget.currentText() if widget else "")
+                    elif col == 5:
+                        widget = self.kosten_table.cellWidget(row, col)
+                        row_data.append("1" if (widget and widget.isChecked()) else "0")
+                    else:
+                        item = self.kosten_table.item(row, col)
+                        row_data.append(item.text() if item else "")
+                writer.writerow(row_data)
+
+    # ─── Laden/Speichern Ergebnisse ──────────────────────────────────
+    def lade_ergebnisse(self):
+        filename = "ergebnisse.csv"
+        if not os.path.exists(filename):
+            return
+        with open(filename, 'r', encoding='utf-8') as f:
+            reader = csv.reader(f)
+            next(reader, None)
+            self.ergebnisse_table.setRowCount(0)
+            for row_data in reader:
+                row_index = self.ergebnisse_table.rowCount()
+                self.ergebnisse_table.insertRow(row_index)
+                for col, data in enumerate(row_data):
+                    if col < self.ergebnisse_table.columnCount():
+                        self.ergebnisse_table.setItem(row_index, col,
+                                                      QtWidgets.QTableWidgetItem(data))
+
+    def speichere_ergebnisse(self):
+        filename = "ergebnisse.csv"
+        with open(filename, 'w', newline='', encoding='utf-8') as f:
+            writer = csv.writer(f)
+            headers = [
+                self.ergebnisse_table.horizontalHeaderItem(i).text()
+                for i in range(self.ergebnisse_table.columnCount())
+            ]
+            writer.writerow(headers)
+            for row in range(self.ergebnisse_table.rowCount()):
+                row_data = []
+                for col in range(self.ergebnisse_table.columnCount()):
+                    item = self.ergebnisse_table.item(row, col)
+                    row_data.append(item.text() if item else "")
+                writer.writerow(row_data)
+
+    # ─── Ende Laden/Speichern ─────────────────────────────────────────
 
     def copy_zaehler_to_historie(self):
         """Kopiert die aktuellen Zählerstände in die Historie und berechnet den Verbrauch."""
@@ -188,18 +339,18 @@ class TabellenGUI(QtWidgets.QWidget):
                 row_index = self.historie_table.rowCount()
                 self.historie_table.insertRow(row_index)
                 self.historie_table.setItem(row_index, 0,
-                                           QtWidgets.QTableWidgetItem(str(year)))
+                                            QtWidgets.QTableWidgetItem(str(year)))
                 self.historie_table.setItem(row_index, 1,
-                                           QtWidgets.QTableWidgetItem(partei_item.text()))
+                                            QtWidgets.QTableWidgetItem(partei_item.text()))
                 self.historie_table.setItem(row_index, 2,
-                                           QtWidgets.QTableWidgetItem(art_item.text()))
+                                            QtWidgets.QTableWidgetItem(art_item.text()))
                 self.historie_table.setItem(row_index, 3,
-                                           QtWidgets.QTableWidgetItem(f"{alt_wert:.2f}"))
+                                            QtWidgets.QTableWidgetItem(f"{alt_wert:.2f}"))
                 self.historie_table.setItem(row_index, 4,
-                                           QtWidgets.QTableWidgetItem(f"{neu_wert:.2f}"))
+                                            QtWidgets.QTableWidgetItem(f"{neu_wert:.2f}"))
                 verbrauch = neu_wert - alt_wert
                 self.historie_table.setItem(row_index, 5,
-                                           QtWidgets.QTableWidgetItem(f"{verbrauch:.2f}"))
+                                            QtWidgets.QTableWidgetItem(f"{verbrauch:.2f}"))
 
     def prepare_new_year(self):
         """Übernimmt bei Jahreswechsel den Neuwert als neuen Altstand und leert das Neuwert-Feld."""
@@ -258,7 +409,7 @@ class TabellenGUI(QtWidgets.QWidget):
                     self.historie_table.insertRow(row_index)
                     for col, data in enumerate(row_data):
                         self.historie_table.setItem(row_index, col,
-                                                   QtWidgets.QTableWidgetItem(data))
+                                                    QtWidgets.QTableWidgetItem(data))
             QtWidgets.QMessageBox.information(
                 self, "Laden", f"Historie aus {filename} geladen")
         except FileNotFoundError:
@@ -267,9 +418,9 @@ class TabellenGUI(QtWidgets.QWidget):
             )
 
     def berechne(self):
-        """Haupt-Berechnungslogik inklusive Heizkosten-Tab."""
+        """Haupt-Berechnungslogik inklusive Detail-Abrechnung."""
         # 1) Zählerstände → Menge (inkl. Mieterwechsel)
-        par_consumption = {}
+        par_consumption = {}  # {(Partei, Verbrauchsart): Menge}
         total_heiz_consumption = 0.0
 
         for row in range(self.zaehler_table.rowCount()):
@@ -319,7 +470,7 @@ class TabellenGUI(QtWidgets.QWidget):
         # 2) Heizkosten 70/30 & CO₂-Aufschlag
         heizkosten_gesamt       = 0.0
         heizgrundkosten_gesamt   = 0.0
-        heiz_faktoren_pro_partei = {}
+        heiz_faktoren_pro_partei = {}  # {Partei: Faktor-Summe}
 
         for row in range(self.kosten_table.rowCount()):
             kostenart_item = self.kosten_table.item(row, 0)
@@ -342,7 +493,7 @@ class TabellenGUI(QtWidgets.QWidget):
             if self.check_co2_global.isChecked() and co2_widget and co2_widget.isChecked():
                 gesamt_kost *= 1.05
 
-            # Heizkosten 70/30
+            # Heizkosten 70/30 aufsplitten
             if self.check_7030.isChecked() and "Heizung" in text_kostenart:
                 verbrauchsteil = gesamt_kost * 0.70
                 grundteil      = gesamt_kost * 0.30
@@ -392,7 +543,7 @@ class TabellenGUI(QtWidgets.QWidget):
                 for partei_name in parteien_mit_heiz:
                     grund_heiz_verteilung[partei_name] = gleichanteil
 
-        # ── Heizkosten-Tab befüllen ───────────────────────────────────────
+        # ── Heizkosten-Tab befüllen ───────────────────────────────────
         self.heiz_table.setRowCount(0)
         alle_parteien = set()
         for (partei, art), menge in par_consumption.items():
@@ -405,28 +556,29 @@ class TabellenGUI(QtWidgets.QWidget):
             self.heiz_table.insertRow(zeile)
 
             self.heiz_table.setItem(zeile, 0,
-                QtWidgets.QTableWidgetItem(partei_name))
+                                    QtWidgets.QTableWidgetItem(partei_name))
 
             heiz_verbrauch = 0.0
             for (p, art), menge in par_consumption.items():
                 if p == partei_name and "Heizung" in art:
                     heiz_verbrauch += menge
             self.heiz_table.setItem(zeile, 1,
-                QtWidgets.QTableWidgetItem(f"{heiz_verbrauch:.2f}"))
+                                    QtWidgets.QTableWidgetItem(f"{heiz_verbrauch:.2f}"))
 
             heizkosten70 = verbrauch_heiz_verteilung.get(partei_name, 0.0)
             self.heiz_table.setItem(zeile, 2,
-                QtWidgets.QTableWidgetItem(f"{heizkosten70:.2f}"))
+                                    QtWidgets.QTableWidgetItem(f"{heizkosten70:.2f}"))
 
             heizgrund30 = grund_heiz_verteilung.get(partei_name, 0.0)
             self.heiz_table.setItem(zeile, 3,
-                QtWidgets.QTableWidgetItem(f"{heizgrund30:.2f}"))
+                                    QtWidgets.QTableWidgetItem(f"{heizgrund30:.2f}"))
 
-        # ── Fixkosten-Umlage & andere Verteilungen ───────────────────────
+        # ── Fixkosten-Umlage & andere Verteilungen ────────────────────
         anteile_pro_partei = {}
         gesamt_flaeche     = 0.0
         gesamt_parteien    = 0
 
+        # Errechnung Wohnfläche-Summe
         for row in range(self.kosten_table.rowCount()):
             schl_widget = self.kosten_table.cellWidget(row, 1)
             schl_text   = schl_widget.currentText() if schl_widget else ""
@@ -446,6 +598,9 @@ class TabellenGUI(QtWidgets.QWidget):
                     partei = self.zaehler_table.item(z_row, 0)
                     if partei and partei.text().strip():
                         gesamt_parteien += 1
+
+        # Sammel-Datenstruktur für Fixkosten-Details
+        fixkosten_pro_partei = {}  # {Partei: {Kostenart: Betrag}}
 
         for row in range(self.kosten_table.rowCount()):
             kostenart_item = self.kosten_table.item(row, 0)
@@ -467,14 +622,15 @@ class TabellenGUI(QtWidgets.QWidget):
             if self.check_co2_global.isChecked() and co2_widget and co2_widget.isChecked():
                 gesamt_kost *= 1.05
 
-            # Skip Heizkosten hier, weil separat berechnet
+            # Überspringe Heizkosten (separat behandelt)
             if self.check_7030.isChecked() and "Heizung" in text_kostenart:
                 continue
 
+            # Manuell: Nutzer schreibt selbst in Spalte 5, hier ignorieren
             if schl_text == "Manuell":
-                # Nutzer füllt Verteilte Kosten (€) in Spalte 5 selbst aus
                 continue
 
+            # Faktor-Verteilung
             elif schl_text == "Faktor":
                 faktor_item = self.kosten_table.item(row, 2)
                 if not faktor_item:
@@ -494,11 +650,12 @@ class TabellenGUI(QtWidgets.QWidget):
                 if summe_faktoren_fix > 0:
                     for partei_name, wert in faktor_dict.items():
                         anteil = (wert / summe_faktoren_fix) * gesamt_kost
-                        anteile_pro_partei[partei_name] = (
-                            anteile_pro_partei.get(partei_name, 0.0) + anteil
-                        )
+                        if partei_name not in fixkosten_pro_partei:
+                            fixkosten_pro_partei[partei_name] = {}
+                        fixkosten_pro_partei[partei_name][text_kostenart] = anteil
                 continue
 
+            # Fläche-Verteilung (Wohnfläche)
             elif schl_text == "Fläche":
                 if gesamt_flaeche > 0:
                     for z_row in range(self.zaehler_table.rowCount()):
@@ -510,11 +667,13 @@ class TabellenGUI(QtWidgets.QWidget):
                             except:
                                 qm = 0.0
                             anteil = (qm / gesamt_flaeche) * gesamt_kost
-                            anteile_pro_partei[partei.text()] = (
-                                anteile_pro_partei.get(partei.text(), 0.0) + anteil
-                            )
+                            p = partei.text()
+                            if p not in fixkosten_pro_partei:
+                                fixkosten_pro_partei[p] = {}
+                            fixkosten_pro_partei[p][text_kostenart] = anteil
                 continue
 
+            # Parteien-Verteilung (gleichmäßig)
             elif schl_text == "Parteien":
                 if gesamt_parteien > 0:
                     anteil = gesamt_kost / gesamt_parteien
@@ -523,11 +682,15 @@ class TabellenGUI(QtWidgets.QWidget):
                 for z_row in range(self.zaehler_table.rowCount()):
                     partei = self.zaehler_table.item(z_row, 0)
                     if partei and partei.text().strip():
-                        anteile_pro_partei[partei.text()] = (
-                            anteile_pro_partei.get(partei.text(), 0.0) + anteil
+                        p = partei.text()
+                        if p not in fixkosten_pro_partei:
+                            fixkosten_pro_partei[p] = {}
+                        fixkosten_pro_partei[p][text_kostenart] = (
+                            fixkosten_pro_partei[p].get(text_kostenart, 0.0) + anteil
                         )
                 continue
 
+            # Verbrauch-Verteilung (z. B. Wasser)
             elif schl_text == "Verbrauch":
                 total_verbrauch = 0.0
                 kosten_art = text_kostenart
@@ -551,13 +714,18 @@ class TabellenGUI(QtWidgets.QWidget):
                             anteil = (verbrauch / total_verbrauch) * gesamt_kost
                         else:
                             anteil = 0.0
-                        anteile_pro_partei[partei.text()] = (
-                            anteile_pro_partei.get(partei.text(), 0.0) + anteil
+                        p = partei.text()
+                        if p not in fixkosten_pro_partei:
+                            fixkosten_pro_partei[p] = {}
+                        fixkosten_pro_partei[p][text_kostenart] = (
+                            fixkosten_pro_partei[p].get(text_kostenart, 0.0) + anteil
                         )
                 continue
 
-        # ── Tab 6: Ergebnisse mit Summen ─────────────────────────────────
+        # ── Abrechnung: Ergebnisse + Detail-Tabelle ─────────────────────
         ergebnis_texte = []
+        self.abrechnung_detail_table.setRowCount(0)
+
         for row in range(self.ergebnisse_table.rowCount()):
             name_item    = self.ergebnisse_table.item(row, 0)  # Mieter
             partei_item  = self.ergebnisse_table.item(row, 1)  # Partei
@@ -572,18 +740,24 @@ class TabellenGUI(QtWidgets.QWidget):
             except ValueError:
                 gezahlt_betrag = 0.0
 
-            anteil_summe = anteile_pro_partei.get(partei_text, 0.0)
-            heiz_v       = verbrauch_heiz_verteilung.get(partei_text, 0.0)
-            grund_v      = grund_heiz_verteilung.get(partei_text, 0.0)
+            # Heizkosten-Anteile
+            heiz_v = verbrauch_heiz_verteilung.get(partei_text, 0.0)
+            grund_v = grund_heiz_verteilung.get(partei_text, 0.0)
 
-            gesamt_kosten_partei = anteil_summe + heiz_v + grund_v
+            # Fixkosten-Anteile (ohne Heizung)
+            sonst_fix = 0.0
+            fix_posten = fixkosten_pro_partei.get(partei_text, {})
+            for anteil in fix_posten.values():
+                sonst_fix += anteil
+
+            gesamt_kosten_partei = sonst_fix + heiz_v + grund_v
             differenz = gesamt_kosten_partei - gezahlt_betrag
             try:
                 neuer_abschlag = (gesamt_kosten_partei / 12) * 1.05
             except:
                 neuer_abschlag = 0.0
 
-            # Fülle Ergebnisse-Tabelle
+            # 1) Ergebnisse-Tab aktualisieren
             self.ergebnisse_table.setItem(row, 2,
                 QtWidgets.QTableWidgetItem(f"{gesamt_kosten_partei:.2f}"))
             self.ergebnisse_table.setItem(row, 4,
@@ -591,7 +765,7 @@ class TabellenGUI(QtWidgets.QWidget):
             self.ergebnisse_table.setItem(row, 5,
                 QtWidgets.QTableWidgetItem(f"{neuer_abschlag:.2f}"))
 
-            # Erzeuge Textbaustein
+            # 2) Textbaustein generieren
             if differenz > 0:
                 text = (
                     f"Sehr geehrte/r {name_text}, Ihre Nebenkostenabrechnung ergibt eine "
@@ -606,27 +780,185 @@ class TabellenGUI(QtWidgets.QWidget):
                 )
             ergebnis_texte.append(text)
 
-        # Schreibe Texte in Abrechnung-Tab
+            # 3) Detail-Tabelle befüllen
+            # Spalten: [Mieter, Position, Wert (€), Verbrauch]
+            # Heizkosten anzeigen?
+            if self.chk_show_heiz.isChecked():
+                if heiz_v:
+                    zeile = self.abrechnung_detail_table.rowCount()
+                    self.abrechnung_detail_table.insertRow(zeile)
+                    self.abrechnung_detail_table.setItem(zeile, 0,
+                        QtWidgets.QTableWidgetItem(name_text))
+                    self.abrechnung_detail_table.setItem(zeile, 1,
+                        QtWidgets.QTableWidgetItem("Heizkosten (Verbrauchsteil 70 %)"))
+                    self.abrechnung_detail_table.setItem(zeile, 2,
+                        QtWidgets.QTableWidgetItem(f"{heiz_v:.2f}"))
+                    self.abrechnung_detail_table.setItem(zeile, 3,
+                        QtWidgets.QTableWidgetItem(
+                            f"{summe_heizverbrauch(partei_text, par_consumption):.2f}"))
+                if grund_v:
+                    zeile = self.abrechnung_detail_table.rowCount()
+                    self.abrechnung_detail_table.insertRow(zeile)
+                    self.abrechnung_detail_table.setItem(zeile, 0,
+                        QtWidgets.QTableWidgetItem(name_text))
+                    self.abrechnung_detail_table.setItem(zeile, 1,
+                        QtWidgets.QTableWidgetItem("Heizgrundkosten (30 %)"))
+                    self.abrechnung_detail_table.setItem(zeile, 2,
+                        QtWidgets.QTableWidgetItem(f"{grund_v:.2f}"))
+                    self.abrechnung_detail_table.setItem(zeile, 3,
+                        QtWidgets.QTableWidgetItem(""))
+
+            # Fixkosten anzeigen?
+            if self.chk_show_fix.isChecked():
+                for kostenart, anteil in fix_posten.items():
+                    zeile = self.abrechnung_detail_table.rowCount()
+                    self.abrechnung_detail_table.insertRow(zeile)
+                    self.abrechnung_detail_table.setItem(zeile, 0,
+                        QtWidgets.QTableWidgetItem(name_text))
+                    self.abrechnung_detail_table.setItem(zeile, 1,
+                        QtWidgets.QTableWidgetItem(kostenart))
+                    self.abrechnung_detail_table.setItem(zeile, 2,
+                        QtWidgets.QTableWidgetItem(f"{anteil:.2f}"))
+                    self.abrechnung_detail_table.setItem(zeile, 3,
+                        QtWidgets.QTableWidgetItem(""))
+
+            # Verbrauchswerte anzeigen?
+            if self.chk_show_verbrauch.isChecked():
+                for (p, art), menge in par_consumption.items():
+                    if p == partei_text:
+                        zeile = self.abrechnung_detail_table.rowCount()
+                        self.abrechnung_detail_table.insertRow(zeile)
+                        self.abrechnung_detail_table.setItem(zeile, 0,
+                            QtWidgets.QTableWidgetItem(name_text))
+                        self.abrechnung_detail_table.setItem(zeile, 1,
+                            QtWidgets.QTableWidgetItem(f"Verbrauch {art}"))
+                        kosten_einheit = self._get_kosten_einheit(p, art)
+                        wert = menge * kosten_einheit
+                        self.abrechnung_detail_table.setItem(zeile, 2,
+                            QtWidgets.QTableWidgetItem(f"{wert:.2f}"))
+                        self.abrechnung_detail_table.setItem(zeile, 3,
+                            QtWidgets.QTableWidgetItem(f"{menge:.2f}"))
+
+        # 4) Textfeld im Abrechnung-Tab befüllen
         self.abrechnung_area.setText("\n\n".join(ergebnis_texte))
 
+    def _get_kosten_einheit(self, partei, art):
+        """
+        Hilfsmethode: Sucht in der Zählerstände-Tabelle
+        den Eintrag 'Kosten/Einheit (€)' zu genau dieser Partei+Verbrauchsart.
+        """
+        for row in range(self.zaehler_table.rowCount()):
+            partei_item = self.zaehler_table.item(row, 0)
+            art_item    = self.zaehler_table.item(row, 1)
+            kosten_item = self.zaehler_table.item(row, 5)
+            if (partei_item and partei_item.text().strip() == partei 
+                    and art_item and art_item.text().strip() == art 
+                    and kosten_item):
+                try:
+                    return float(kosten_item.text())
+                except:
+                    return 0.0
+        return 0.0
+
     def export_abrechnung_pdf(self):
-        """Exportiert den Inhalt des Abrechnungstab als PDF."""
+        """
+        Exportiert im Abrechnungs-Tab:
+        1. Die Detail-Tabelle (alle angehakten Positionen) als PDF-Tabelle.
+        2. Den Textblock der summarischen Texte.
+        """
         year = datetime.now().year
         filename = f"abrechnung_{year}.pdf"
         c = canvas.Canvas(filename, pagesize=A4)
         width, height = A4
-        textobject = c.beginText(40, height - 50)
-        textobject.setFont("Helvetica", 12)
 
-        content = self.abrechnung_area.toPlainText().split("\n")
-        for line in content:
-            textobject.textLine(line)
+        y_position = height - 40
+        c.setFont("Helvetica-Bold", 14)
+        c.drawString(40, y_position, f"Nebenkostenabrechnung {year}")
+        y_position -= 30
 
-        c.drawText(textobject)
+        # 1. Detail-Tabelle zeichnen
+        c.setFont("Helvetica-Bold", 12)
+        c.drawString(40, y_position, "Detail-Abrechnung:")
+        y_position -= 20
+
+        # Tabellenkopf
+        data = [["Mieter", "Position", "Wert (€)", "Verbrauch"]]
+        for row in range(self.abrechnung_detail_table.rowCount()):
+            mieter_item   = self.abrechnung_detail_table.item(row, 0)
+            position_item = self.abrechnung_detail_table.item(row, 1)
+            wert_item     = self.abrechnung_detail_table.item(row, 2)
+            verbrauch_item= self.abrechnung_detail_table.item(row, 3)
+            mieter   = mieter_item.text() if mieter_item else ""
+            position = position_item.text() if position_item else ""
+            wert     = wert_item.text() if wert_item else ""
+            verbrauch= verbrauch_item.text() if verbrauch_item else ""
+            data.append([mieter, position, wert, verbrauch])
+
+        # Layout-Einstellungen
+        table_x = 40
+        table_y = y_position
+        col_widths = [100, 200, 80, 80]
+        row_height = 18
+
+        # Zeichne Tabellenzeilen
+        for i, row_data in enumerate(data):
+            x = table_x
+            y = table_y - i * row_height
+            # Hintergrund für Kopfzeile
+            if i == 0:
+                c.setFillColor(colors.lightgrey)
+                c.rect(x, y - row_height + 2, sum(col_widths), row_height, fill=True, stroke=False)
+                c.setFillColor(colors.black)
+            # Jede Zelle zeichnen
+            for j, cell in enumerate(row_data):
+                c.rect(x, y - row_height + 2, col_widths[j], row_height, stroke=True, fill=False)
+                c.setFont("Helvetica", 10)
+                c.drawString(x + 3, y - row_height + 6, cell)
+                x += col_widths[j]
+            # Wenn der Tabellenbereich knapp wird, in die PDF-Logik passen (hier minimal)
+            if y - row_height < 100:
+                break
+
+        # Nächster Freiraum nach Tabelle
+        y_position = table_y - len(data) * row_height - 20
+
+        # 2. Zusammenfassende Texte einfügen
+        c.setFont("Helvetica-Bold", 12)
+        c.drawString(40, y_position, "Zusammenfassende Texte:")
+        y_position -= 20
+        c.setFont("Helvetica", 10)
+
+        for line in self.abrechnung_area.toPlainText().split("\n"):
+            if y_position < 50:
+                c.showPage()
+                y_position = height - 40
+                c.setFont("Helvetica", 10)
+            c.drawString(40, y_position, line)
+            y_position -= 14
+
         c.save()
         QtWidgets.QMessageBox.information(
             self, "PDF Export", f"Abrechnung als {filename} gespeichert"
         )
+
+    def closeEvent(self, event):
+        """
+        Beim Schließen: Speichere Zählerstände, Fixkosten und Ergebnisse in CSV-Dateien.
+        """
+        self.speichere_zaehlerstaende()
+        self.speichere_fixkosten()
+        self.speichere_ergebnisse()
+        event.accept()
+
+def summe_heizverbrauch(partei, par_consumption):
+    """
+    Summiert den Heizverbrauch (Menge) pro Partei aus par_consumption.
+    """
+    total = 0.0
+    for (p, art), menge in par_consumption.items():
+        if p == partei and "Heizung" in art:
+            total += menge
+    return total
 
 if __name__ == "__main__":
     app = QtWidgets.QApplication(sys.argv)
